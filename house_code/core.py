@@ -6,10 +6,12 @@ User Request → Think/Plan → Gather Context → Execute → Verify → Respon
 """
 
 import json
+import time
 from typing import List, Dict, Any, Optional
 from dataclasses import dataclass, field
 
 import anthropic
+from .progress import ProgressIndicator
 
 
 @dataclass
@@ -230,18 +232,36 @@ This prevents context pollution and allows parallel deep research.
 
     def _execute_tool(self, tool_name: str, tool_input: Dict[str, Any]) -> str:
         """
-        Execute a tool call.
+        Execute a tool call with real-time progress output.
 
         Looks up the tool executor and runs it with the provided input.
+        Shows progress indicators so users know what's happening.
         """
         if tool_name not in self.tool_executors:
+            ProgressIndicator.print_tool_error(f"Unknown tool '{tool_name}'")
             return f"Error: Unknown tool '{tool_name}'"
 
+        # Print start indicator
+        ProgressIndicator.print_tool_start(tool_name, tool_input)
+
         try:
+            # Execute tool with timing
+            start_time = time.time()
             executor = self.tool_executors[tool_name]
             result = executor(**tool_input)
-            return str(result)
+            elapsed = time.time() - start_time
+
+            # Convert result to string
+            result_str = str(result)
+
+            # Show output preview (only show timing for operations > 0.1s)
+            show_timing = elapsed > 0.1
+            ProgressIndicator.print_output_preview(result_str)
+            ProgressIndicator.print_tool_complete(elapsed, show_timing)
+
+            return result_str
         except Exception as e:
+            ProgressIndicator.print_tool_error(str(e))
             return f"Error executing {tool_name}: {e}"
 
     def needs_garbage_collection(self) -> bool:
