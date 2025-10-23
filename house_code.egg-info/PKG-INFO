@@ -1,0 +1,117 @@
+Metadata-Version: 2.4
+Name: house-code
+Version: 0.1.0
+Summary: Open-source introspective coding agent built by observing Claude Code
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: anthropic>=0.40.0
+Requires-Dist: click>=8.1.0
+Requires-Dist: rich>=13.0.0
+Requires-Dist: prompt-toolkit>=3.0.0
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0.0; extra == "dev"
+Requires-Dist: black>=23.0.0; extra == "dev"
+Requires-Dist: ruff>=0.1.0; extra == "dev"
+
+# House Code
+
+An open-source AI coding assistant built through introspection of Claude Code's behavior.
+
+## The Experiment
+
+House Code is built by having Claude Code analyze its own behavior patterns and rebuild itself. Instead of reading documentation, it observes how it actually uses tools, makes decisions, and solves coding tasks.
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for deep introspection results.
+
+## Current Status
+
+### ✅ Phase 1: Introspection & Architecture
+- Documented introspection in ARCHITECTURE.md
+- Identified core behavior patterns
+- Designed architecture based on self-observation
+
+### 🚧 Phase 2: Core Loop Implementation
+- ✅ Main agentic loop (CLI → API → Tool Parse → Execute)
+- ✅ CLI interface
+- ⏳ Testing: "create a hello world Python script"
+
+### ⏳ Phase 3: Tool System
+- Read, Write, Edit, Bash, Grep, Glob, TodoWrite
+- Testing: Basic file operations
+
+### ⏳ Phase 4: Sub-Agent System
+- Explore, house-research, house-bash, house-git agents
+- Parent context access
+- Testing: Delegation
+
+### ⏳ Phase 5: Garbage Collector (Innovation)
+- Context analysis and pruning
+- State preservation
+- Testing: Token reduction
+
+### ⏳ Phase 6: Self-Comparison
+- Run real tasks
+- Compare to Claude Code
+- Document learnings
+
+## Installation
+
+```bash
+cd house-code
+pip install -e .
+```
+
+## Usage
+
+Set your Anthropic API key:
+```bash
+export ANTHROPIC_API_KEY=your-key-here
+```
+
+Interactive mode:
+```bash
+house
+```
+
+Single prompt mode:
+```bash
+house "create a hello world Python script"
+```
+
+## Architecture
+
+Based on introspection, House Code follows this loop:
+
+```
+User Request
+    ↓
+[Think & Plan]
+    ↓
+[Gather Context] ← Read/Grep/Glob
+    ↓
+[Execute] ← Write/Edit/Bash
+    ↓
+[Verify Results]
+    ↓
+[Iterate if needed] → back to Think
+    ↓
+[Respond to User]
+```
+
+## Key Insights from Introspection
+
+1. **Read before Edit**: Always read files before editing (need exact text)
+2. **Tool specialization**: Use right tool for the job, not bash for everything
+3. **Defensive verification**: Check state before acting
+4. **Context pruning**: Need garbage collection for long conversations
+
+## Innovation: Garbage Collector
+
+What Claude Code wishes it had - automatic context pruning that:
+- Identifies stale/redundant content
+- Preserves critical state
+- Reduces token usage in long conversations
+
+## License
+
+MIT
