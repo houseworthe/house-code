@@ -156,3 +156,23 @@ class CompressionStats:
         if total == 0:
             return 0.0
         return (self.cache_hits / total) * 100
+
+
+@dataclass
+class ArchivedImage:
+    """
+    Minimal POC: PNG archive of conversation for OCR reconstruction.
+
+    This is a simplified model to test the image archival concept.
+    Stores the rendered PNG bytes along with original text for accuracy comparison.
+    """
+    image_bytes: bytes
+    message_ids: List[str]
+    original_text: str  # Keep for accuracy comparison in POC
+    format: str = "PNG"
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def size_kb(self) -> float:
+        """Return image size in KB."""
+        return len(self.image_bytes) / 1024

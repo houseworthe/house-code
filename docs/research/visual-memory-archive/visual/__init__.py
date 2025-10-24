@@ -27,6 +27,7 @@ from .models import (
     VisualMemory,
     RenderConfig,
     CompressionStats,
+    ArchivedImage,  # POC model for image archival
 )
 
 from .renderer import (
@@ -76,6 +77,7 @@ __all__ = [
     'VisualMemory',
     'RenderConfig',
     'CompressionStats',
+    'ArchivedImage',  # POC
 
     # Renderer
     'ConversationRenderer',
