@@ -42,8 +42,13 @@ from .banner import show_banner
     is_flag=True,
     help="Suppress the startup banner",
 )
+@click.option(
+    "--enable-visual-compression/--disable-visual-compression",
+    default=None,
+    help="Enable/disable visual memory compression (default: from config)",
+)
 @click.argument("prompt", required=False)
-def main(api_key: str, model: str, working_dir: str, max_iterations: int, no_banner: bool, prompt: str):
+def main(api_key: str, model: str, working_dir: str, max_iterations: int, no_banner: bool, enable_visual_compression: bool, prompt: str):
     """
     House Code - Introspective AI Coding Assistant
 
@@ -59,6 +64,7 @@ def main(api_key: str, model: str, working_dir: str, max_iterations: int, no_ban
         model=model,
         working_directory=working_dir,
         max_iterations=max_iterations,
+        enable_visual_compression=enable_visual_compression,
     )
 
     # Change to working directory

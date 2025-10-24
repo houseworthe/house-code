@@ -14,7 +14,7 @@ import anthropic
 from .progress import ProgressIndicator
 
 if TYPE_CHECKING:
-    from .visual import VisualCache
+    from .visual import VisualCache, CompressionStats
 
 
 @dataclass
@@ -32,6 +32,7 @@ class ConversationContext:
     current_todos: List[Dict] = field(default_factory=list)
     critical_state: Dict[str, Any] = field(default_factory=dict)
     visual_cache: Optional['VisualCache'] = None  # Phase 5: Visual memory cache
+    compression_stats: Optional['CompressionStats'] = None  # Phase 6: Compression statistics
 
     def add_message(self, role: str, content: Any):
         """Add a message to the conversation history."""
@@ -72,6 +73,7 @@ class HouseCode:
         cleaning_frequency: int = 3,
         is_subagent: bool = False,
         subagent_name: str = "",
+        enable_visual_compression: Optional[bool] = None,
     ):
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = model
@@ -95,8 +97,9 @@ class HouseCode:
         self.subagent_header_printed = False
 
         # Phase 5: Initialize visual memory
-        from .visual import VisualCache, RosieClient, load_config
+        from .visual import VisualCache, RosieClient, load_config, CompressionStats
         config = load_config()
+        self.visual_config = config  # Store for later access
         self.context.visual_cache = VisualCache(
             max_entries=config.cache_max_entries,
             max_size_mb=config.cache_max_size_mb,
@@ -104,10 +107,67 @@ class HouseCode:
         )
         self.rosie_client = RosieClient(config)
 
+        # Phase 6: Initialize compression stats and settings
+        self.context.compression_stats = CompressionStats()
+        # Use config value if not explicitly provided
+        self.enable_visual_compression = (
+            enable_visual_compression
+            if enable_visual_compression is not None
+            else config.enable_auto_compression
+        )
+
     def register_tool(self, tool_definition: Dict, executor: callable):
         """Register a tool with its definition and executor."""
         self.tools.append(tool_definition)
         self.tool_executors[tool_definition["name"]] = executor
+
+    def _build_compression_status(self) -> str:
+        """
+        Build compression status section for system prompt.
+
+        Returns:
+            Formatted compression status string
+        """
+        if not self.enable_visual_compression:
+            return "Visual Memory: DISABLED"
+
+        stats = self.context.compression_stats
+        mode = "mock mode" if self.visual_config.use_mock else "real mode"
+
+        # Find compressed message placeholders
+        compressed_blocks = []
+        for idx, msg in enumerate(self.context.messages):
+            if msg.role == "assistant" and isinstance(msg.content, list):
+                for block in msg.content:
+                    if isinstance(block, dict) and block.get("type") == "text":
+                        metadata = block.get("metadata", {})
+                        if metadata.get("compressed"):
+                            start = metadata.get("start_idx")
+                            end = metadata.get("end_idx")
+                            compressed_blocks.append(f"turns {start}-{end}")
+
+        lines = [
+            "Visual Memory Compression:",
+            f"  Status: ENABLED ({mode})",
+            f"  Compressed blocks: {len(compressed_blocks)}",
+        ]
+
+        if compressed_blocks:
+            blocks_str = ", ".join(compressed_blocks[:5])  # Show first 5
+            if len(compressed_blocks) > 5:
+                blocks_str += f" + {len(compressed_blocks) - 5} more"
+            lines.append(f"  Blocks: {blocks_str}")
+
+        if stats and stats.total_compressions > 0:
+            lines.append(f"  Token savings: ~{stats.total_tokens_saved} tokens")
+            lines.append(f"  Average ratio: {stats.average_compression_ratio:.1f}x")
+
+        lines.append(f"  Age threshold: {self.visual_config.compression_age_threshold} turns")
+        lines.append("")
+        lines.append("  Note: Compressed messages can be retrieved using DecompressVisualMemory tool")
+        lines.append("  if needed. Provide message_ids like ['turn_0', 'turn_1', ...].")
+
+        return "\n".join(lines)
 
     def _build_system_prompt(self) -> str:
         """
@@ -171,7 +231,9 @@ This prevents context pollution and allows parallel deep research.
 - Read files before editing them
 - Check state before destructive operations
 - Use exact text matching in Edit tool
-"""
+
+## {compression_status}
+""".format(compression_status=self._build_compression_status())
 
     def run(self, user_message: str) -> str:
         """
@@ -493,6 +555,270 @@ Be aggressive but safe. Prioritize keeping context lean."""
 
         except Exception as e:
             print(f"[Cleaner Agent Error: {e}]")
+
+        # Phase 6: Compress old messages after cleaning
+        if self.enable_visual_compression:
+            compressed_count = self._compress_old_messages()
+            # Stats are already printed in _compress_old_messages()
+
+    def _compress_old_messages(self) -> int:
+        """
+        Compress old messages during garbage collection.
+
+        Identifies message blocks older than threshold and compresses
+        them to visual tokens, replacing with placeholders.
+
+        Returns:
+            Number of blocks successfully compressed
+        """
+        import time
+
+        # Identify compressible message blocks
+        blocks = self._identify_compressible_messages()
+
+        if not blocks:
+            return 0
+
+        compressed_count = 0
+        total_tokens_saved = 0
+
+        start_time = time.time()
+
+        # Compress each block (process in reverse to maintain indices)
+        for start_idx, end_idx in reversed(blocks):
+            # Compress block
+            memory = self._compress_message_block(start_idx, end_idx)
+
+            if memory:
+                # Replace with placeholder
+                self._replace_with_placeholder(start_idx, end_idx, memory)
+
+                # Update stats
+                tokens_saved = memory.savings_estimate
+                total_tokens_saved += tokens_saved
+                compressed_count += 1
+
+                # Update compression stats
+                elapsed_ms = (time.time() - start_time) * 1000
+                self.context.compression_stats.update_compression(
+                    tokens_saved=tokens_saved,
+                    compression_ratio=memory.compression_ratio,
+                    latency_ms=elapsed_ms,
+                )
+
+        # Report results
+        if compressed_count > 0:
+            elapsed_total = time.time() - start_time
+            print(f"[Visual Memory: Compressed {compressed_count} block(s)]")
+            print(f"[Visual Memory: Saved ~{total_tokens_saved} tokens ({elapsed_total:.1f}s)]")
+
+        return compressed_count
+
+    def _identify_compressible_messages(self) -> List[tuple[int, int]]:
+        """
+        Identify blocks of old messages that can be compressed.
+
+        Returns list of (start_idx, end_idx) tuples representing
+        consecutive old messages suitable for compression.
+
+        Preserves:
+        - Last 5 messages (safety buffer)
+        - Messages younger than age threshold
+        """
+        threshold = self.visual_config.compression_age_threshold
+        total_messages = len(self.context.messages)
+
+        # Safety: preserve last 5 messages
+        if total_messages <= 5:
+            return []
+
+        max_compressible_idx = total_messages - 5 - 1  # -1 for 0-based indexing
+
+        # Calculate age for each message (turns since it was added)
+        # Current turn is self.turn_count
+        compressible_blocks = []
+        block_start = None
+
+        for idx in range(max_compressible_idx + 1):
+            # Calculate message age in turns
+            # Approximate: messages at idx were added ~(total_messages - idx) turns ago
+            # More accurate: turn_count - (message creation turn)
+            # For simplicity, use message position as proxy for age
+            message_age_estimate = total_messages - idx
+
+            is_old = message_age_estimate > threshold
+
+            # Check if message is user message (never compress user messages)
+            msg = self.context.messages[idx]
+            is_user = msg.role == "user"
+
+            if is_old and not is_user:
+                # Start or continue block
+                if block_start is None:
+                    block_start = idx
+            else:
+                # End block if one was started
+                if block_start is not None:
+                    compressible_blocks.append((block_start, idx - 1))
+                    block_start = None
+
+        # Close final block if still open
+        if block_start is not None:
+            compressible_blocks.append((block_start, max_compressible_idx))
+
+        return compressible_blocks
+
+    def _extract_message_text(self, messages: List[Message]) -> str:
+        """
+        Extract text content from a list of messages.
+
+        Formats messages similar to how they appear in context.
+
+        Args:
+            messages: List of Message objects
+
+        Returns:
+            Formatted text string
+        """
+        lines = []
+
+        for i, msg in enumerate(messages):
+            role = msg.role.upper()
+            lines.append(f"[{role}]")
+
+            # Handle different content types
+            content = msg.content
+
+            if isinstance(content, str):
+                lines.append(content)
+            elif isinstance(content, list):
+                for block in content:
+                    if isinstance(block, dict):
+                        block_type = block.get("type", "unknown")
+
+                        if block_type == "text":
+                            lines.append(block.get("text", ""))
+                        elif block_type == "tool_use":
+                            tool_name = block.get("name", "unknown")
+                            tool_input = block.get("input", {})
+                            lines.append(f"[Tool: {tool_name}]")
+                            lines.append(f"Input: {str(tool_input)[:200]}")
+                        elif block_type == "tool_result":
+                            result_text = block.get("content", "")
+                            lines.append(f"[Tool Result]")
+                            lines.append(str(result_text)[:200])
+                    else:
+                        lines.append(str(block))
+            else:
+                lines.append(str(content))
+
+            lines.append("")  # Blank line between messages
+
+        return "\n".join(lines)
+
+    def _compress_message_block(
+        self,
+        start_idx: int,
+        end_idx: int,
+    ) -> Optional['VisualMemory']:
+        """
+        Compress a block of messages to visual tokens.
+
+        Args:
+            start_idx: Starting message index (inclusive)
+            end_idx: Ending message index (inclusive)
+
+        Returns:
+            VisualMemory object if successful, None on error
+        """
+        try:
+            from .visual import create_renderer, VisualMemory
+
+            # Extract messages
+            messages = self.context.messages[start_idx:end_idx + 1]
+
+            # Generate message IDs (turn-based)
+            message_ids = [f"turn_{i}" for i in range(start_idx, end_idx + 1)]
+
+            # Extract text
+            text = self._extract_message_text(messages)
+            if not text or not text.strip():
+                return None
+
+            # Render to image
+            renderer = create_renderer()
+            images = renderer.render_conversation(text, message_ids)
+
+            if not images:
+                return None
+
+            # Compress (Phase 5: only first image)
+            first_image = images[0]
+            visual_tokens = self.rosie_client.compress(first_image.image_bytes)
+
+            # Create VisualMemory entry
+            compression_ratio = visual_tokens.metadata.get("compression_ratio", 8.0)
+            memory = VisualMemory(
+                message_ids=message_ids,
+                visual_tokens=visual_tokens,
+                original_text_length=len(text),
+                compression_ratio=compression_ratio,
+            )
+
+            # Store in cache
+            cache_key = ",".join(message_ids)
+            self.context.visual_cache.put(cache_key, memory)
+
+            return memory
+
+        except Exception as e:
+            print(f"[Compression Error: {e}]")
+            return None
+
+    def _replace_with_placeholder(
+        self,
+        start_idx: int,
+        end_idx: int,
+        memory: 'VisualMemory',
+    ) -> None:
+        """
+        Replace message block with compression placeholder.
+
+        Args:
+            start_idx: Starting message index
+            end_idx: Ending message index
+            memory: VisualMemory object with compression details
+        """
+        # Create placeholder content
+        placeholder_text = (
+            f"[COMPRESSED: turns {start_idx}-{end_idx}, "
+            f"{memory.token_count} visual tokens, "
+            f"{memory.compression_ratio}x ratio]"
+        )
+
+        # Create placeholder message with metadata
+        placeholder_msg = Message(
+            role="assistant",
+            content=[{
+                "type": "text",
+                "text": placeholder_text,
+                "metadata": {
+                    "compressed": True,
+                    "cache_key": ",".join(memory.message_ids),
+                    "start_idx": start_idx,
+                    "end_idx": end_idx,
+                    "token_count": memory.token_count,
+                    "compression_ratio": memory.compression_ratio,
+                }
+            }]
+        )
+
+        # Replace messages[start_idx:end_idx+1] with placeholder
+        # Delete old messages
+        del self.context.messages[start_idx:end_idx + 1]
+
+        # Insert placeholder
+        self.context.messages.insert(start_idx, placeholder_msg)
 
     def interactive_loop(self):
         """

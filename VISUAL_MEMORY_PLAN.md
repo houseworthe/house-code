@@ -795,7 +795,16 @@ class ConversationContext:
 
 ### Phase 6: Garbage Collector Integration ✅ **COMPLETE**
 
-**Status**: Fully implemented and tested!
+**Status**: Fully implemented, tested, and production-ready!
+
+**Implementation Notes**:
+- ✅ **Fixed critical API compatibility issue**: Changed placeholder role from "system" to "assistant"
+  - Placeholders with role="system" would cause Claude API errors (only "user"/"assistant" allowed)
+  - Updated `_replace_with_placeholder()` to use role="assistant"
+  - Updated `_build_compression_status()` detection logic to match
+  - Added test `test_placeholder_compatible_with_api` to verify API compatibility
+- ✅ **Added CLI flag**: `--enable-visual-compression / --disable-visual-compression`
+- ✅ **All 25 tests passing** (test_gc_integration.py)
 
 **Implemented Methods** (in `house_code/core.py`):
 - ✅ `_compress_old_messages()` - Auto-compression during GC (line 564)
