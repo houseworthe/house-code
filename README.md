@@ -16,4 +16,4 @@ Hit 150k tokens and Claude Code just dies. You lose all your early context or th
 Every 3 turns, Claude analyzes its own conversation history and prunes stale content. Superseded file reads, completed todos, old errors - gone. Uses Claude to clean Claude's context. See `house_code/core.py:389`.
 
 **2. Visual Memory (planned)**
-Compress conversation history into images, process with DeepSeek-OCR for 10x token reduction. Offload heavy inference to Rosie supercomputer via MCP. See `VISUAL_MEMORY_PLAN.md`
+Compress conversation history into images, process with [DeepSeek-OCR](https://github.com/deepseek-ai/DeepSeek-VL2) for 10x token reduction. Offload heavy inference to Rosie supercomputer via MCP. See `VISUAL_MEMORY_PLAN.md`
