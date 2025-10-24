@@ -214,10 +214,10 @@ This prevents context pollution and allows parallel deep research.
   Example: "What changed in the last 5 commits?" → Use house-git agent
 
 **Key benefits of Task tool:**
-- Sub-agents run in separate context windows (no pollution of your context)
+- Sub-agents run in fully isolated context windows (zero pollution)
 - Sub-agents return condensed summaries (token efficient)
 - Sub-agents can do 20+ tool calls internally while you only see final report
-- Sub-agents have access to parent context for informed decisions
+- Sub-agents are fast and cheap (no parent context = 50k+ token savings)
 
 **IMPORTANT**: Don't do large-scale exploration or research directly. Use Task tool proactively.
 

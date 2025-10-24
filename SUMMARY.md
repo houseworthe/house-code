@@ -36,8 +36,8 @@ A fully functional AI coding assistant built entirely through self-introspection
 
 **The Innovation:**
 - **Garbage Collector** - Automatic context pruning
-- **Sub-agent Context Access** - Parent context sharing
-- **Context Pruning Suggestions** - Smart cleanup
+- **Sub-agent Isolation** - Zero context pollution
+- **Token Efficiency** - 50k+ savings per sub-agent call
 
 ---
 

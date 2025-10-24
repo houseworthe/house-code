@@ -211,7 +211,7 @@ Types needed:
 - `house-bash`: For command sequences (Bash, Read)
 - `house-git`: For git analysis (Bash, Read, Grep)
 
-**Innovation**: Sub-agents can suggest context pruning back to parent.
+**Innovation**: Sub-agents run in fully isolated context for speed and clarity.
 
 ### 4. Garbage Collector (The Innovation)
 A special sub-agent that:

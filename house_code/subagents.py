@@ -4,8 +4,8 @@ Sub-agent system for House Code.
 Based on introspection:
 - I use Task tool to delegate to specialized agents
 - Agents have specialized system prompts and tool access
-- KEY INNOVATION: Sub-agents can access parent context
-- KEY INNOVATION: Sub-agents can suggest context pruning
+- KEY INNOVATION: Sub-agents run in fully isolated context
+- KEY INNOVATION: No context pollution - clean separation
 """
 
 from typing import Dict, List, Optional
@@ -101,46 +101,24 @@ class SubAgent:
     """
     A sub-agent instance.
 
-    KEY INNOVATION: Can access parent context and suggest pruning.
+    KEY INNOVATION: Fully isolated - no parent context pollution.
     """
 
     def __init__(
         self,
         agent_type: str,
         prompt: str,
-        parent_context: Optional[List[Dict]] = None,
     ):
         if agent_type not in AGENT_TYPES:
             raise ValueError(f"Unknown agent type: {agent_type}")
 
         self.agent_type = agent_type
         self.prompt = prompt
-        self.parent_context = parent_context or []
         self.config = AGENT_TYPES[agent_type]
 
     def get_system_prompt(self) -> str:
         """Get the specialized system prompt for this agent."""
-        base_prompt = self.config["system_prompt"]
-
-        # Add context awareness
-        if self.parent_context:
-            context_info = f"""
-
-PARENT CONTEXT ACCESS:
-You have access to the parent agent's conversation context.
-This helps you understand what the parent has already done.
-
-Context summary:
-- Parent has had {len(self.parent_context)} messages in conversation
-- You can reference information from parent context
-
-INNOVATION - CONTEXT PRUNING:
-If you notice stale/redundant content in parent context, you can suggest:
-"[CONTEXT_PRUNING_SUGGESTION: <description of what to prune>]"
-"""
-            base_prompt += context_info
-
-        return base_prompt
+        return self.config["system_prompt"]
 
     def get_allowed_tools(self) -> List[str]:
         """Get the list of tools this agent can use."""
@@ -165,7 +143,7 @@ When to use:
 - Use house-bash for multi-step command sequences
 - Use house-git for analyzing git history
 
-IMPORTANT: Sub-agents have access to parent context and can suggest pruning.""",
+IMPORTANT: Sub-agents run in isolated context for clean separation and speed.""",
         "input_schema": {
             "type": "object",
             "properties": {
@@ -193,14 +171,13 @@ def execute_task(
     Execute a Task (spawn sub-agent).
 
     Based on introspection: I delegate to specialized agents.
-    KEY INNOVATION: Sub-agent gets parent context.
+    KEY INNOVATION: Sub-agents run in fully isolated context.
     """
     try:
-        # Create sub-agent with parent context access
+        # Create sub-agent with isolated context
         subagent = SubAgent(
             agent_type=subagent_type,
             prompt=prompt,
-            parent_context=parent_agent.context.get_messages_for_api(),
         )
 
         # Import here to avoid circular dependency
@@ -237,10 +214,6 @@ def execute_task(
 
         # Run sub-agent
         result = sub_house.run(prompt)
-
-        # Check for context pruning suggestions
-        if "[CONTEXT_PRUNING_SUGGESTION:" in result:
-            result += "\n\n[Note: Sub-agent suggested context pruning - consider running garbage collection]"
 
         return f"[{subagent_type} agent report]\n\n{result}"
 
