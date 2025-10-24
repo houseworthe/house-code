@@ -10,6 +10,7 @@ import click
 from pathlib import Path
 
 from .core import HouseCode
+from .banner import show_banner
 
 
 @click.command()
@@ -36,8 +37,13 @@ from .core import HouseCode
     type=int,
     help="Maximum iterations per request",
 )
+@click.option(
+    "--no-banner",
+    is_flag=True,
+    help="Suppress the startup banner",
+)
 @click.argument("prompt", required=False)
-def main(api_key: str, model: str, working_dir: str, max_iterations: int, prompt: str):
+def main(api_key: str, model: str, working_dir: str, max_iterations: int, no_banner: bool, prompt: str):
     """
     House Code - Introspective AI Coding Assistant
 
@@ -72,7 +78,10 @@ def main(api_key: str, model: str, working_dir: str, max_iterations: int, prompt
         print(response)
         return
 
-    # Interactive mode
+    # Interactive mode - show banner
+    if not no_banner:
+        show_banner()
+
     agent.interactive_loop()
 
 
