@@ -17,6 +17,65 @@ House Code faced a critical problem: conversation context accumulates garbage an
 
 ---
 
+## Why It Failed
+
+### Root Cause: Architectural Incompatibility
+
+**Vision tokens cannot be transferred between different model families.**
+
+DeepSeek-OCR's compression only works within DeepSeek's own ecosystem. When using Claude as the inference model, we're forced to convert DeepSeek's vision tokens to plain text, which is where the accuracy loss occurs.
+
+**The Architectural Gap:**
+```
+What Works (DeepSeek Paper):
+PNG → Vision Tokens (stay compressed) → DeepSeek LLM → Response
+      ↑_____ 10x compression, 97% accuracy _____↑
+
+What We Need (Claude-Based System):
+PNG → Vision Tokens → TEXT → Claude → Response
+                      ↑
+              59% accuracy loss
+              (forced cross-model conversion)
+```
+
+**Key insight from our tests:** The `model.infer()` API returns plain text strings, not vision token embeddings. There's no way to extract, store, or transfer vision tokens between models. They're model-specific internal representations.
+
+### Secondary Issues (Symptoms of Text Conversion)
+
+These errors appear during the forced text conversion but aren't the root cause:
+
+1. **Indentation stripping:** All leading whitespace removed (Python becomes invalid)
+2. **Method name errors:** `endswith` → `endsWith` (camelCase hallucination)
+3. **Token truncation:** `os.path.join` → `os.pth.join`
+4. **Extension changes:** `.txt` → `.text`
+5. **Training bias:** Model trained on documents, not code
+
+**Critical point:** Even if we fixed all these error patterns, the architectural limitation remains. You cannot use one model's vision compression with a different model's LLM. (And switching to DeepSeek's LLM wouldn't help - their API also only returns decoded text, not vision tokens. The paper's compression only works in non-API usage where vision tokens stay in memory.)
+
+### Why Can't We Just Use DeepSeek's Models?
+
+**DeepSeek's 97% compression works because:**
+1. Vision encoder creates vision tokens (internal)
+2. Vision tokens stay compressed in DeepSeek's context window
+3. DeepSeek's LLM reads those vision tokens directly
+4. Never converted to text - stays as vision tokens throughout
+
+**But we can't replicate this because:**
+- DeepSeek's API (like all LLM APIs) only returns decoded text
+- Vision tokens are never exposed via API - they're internal implementation details
+- The paper's approach requires direct model usage, not API calls
+- You need the same model family to both create and consume vision tokens
+
+**For Claude to support this:**
+Claude would need to natively implement compressed vision token storage in their API - essentially building their own version of what DeepSeek demonstrated. This would require:
+1. Accepting images and keeping vision tokens compressed in context
+2. Allowing vision tokens to persist across conversation turns
+3. Reading compressed vision tokens on-demand (instead of immediately processing)
+
+This is a feature Claude would have to build into their platform. It's not something we can implement externally.
+
+---
+
 ## What Was Built
 
 ### 1. PNG Rendering Pipeline ✅
@@ -117,65 +176,6 @@ Proof-of-concept scripts and validation:
 - **Model:** `deepseek-ai/DeepSeek-OCR` (latest checkpoint)
 - **Inference Time:** 40-90 seconds per image
 - **Memory:** ~20-30GB VRAM required
-
----
-
-## Why It Failed
-
-### Root Cause: Architectural Incompatibility
-
-**Vision tokens cannot be transferred between different model families.**
-
-DeepSeek-OCR's compression only works within DeepSeek's own ecosystem. When using Claude as the inference model, we're forced to convert DeepSeek's vision tokens to plain text, which is where the accuracy loss occurs.
-
-**The Architectural Gap:**
-```
-What Works (DeepSeek Paper):
-PNG → Vision Tokens (stay compressed) → DeepSeek LLM → Response
-      ↑_____ 10x compression, 97% accuracy _____↑
-
-What We Need (Claude-Based System):
-PNG → Vision Tokens → TEXT → Claude → Response
-                      ↑
-              59% accuracy loss
-              (forced cross-model conversion)
-```
-
-**Key insight from our tests:** The `model.infer()` API returns plain text strings, not vision token embeddings. There's no way to extract, store, or transfer vision tokens between models. They're model-specific internal representations.
-
-### Secondary Issues (Symptoms of Text Conversion)
-
-These errors appear during the forced text conversion but aren't the root cause:
-
-1. **Indentation stripping:** All leading whitespace removed (Python becomes invalid)
-2. **Method name errors:** `endswith` → `endsWith` (camelCase hallucination)
-3. **Token truncation:** `os.path.join` → `os.pth.join`
-4. **Extension changes:** `.txt` → `.text`
-5. **Training bias:** Model trained on documents, not code
-
-**Critical point:** Even if we fixed all these error patterns, the architectural limitation remains. You cannot use one model's vision compression with a different model's LLM. (And switching to DeepSeek's LLM wouldn't help - their API also only returns decoded text, not vision tokens. The paper's compression only works in non-API usage where vision tokens stay in memory.)
-
-### Why Can't We Just Use DeepSeek's Models?
-
-**DeepSeek's 97% compression works because:**
-1. Vision encoder creates vision tokens (internal)
-2. Vision tokens stay compressed in DeepSeek's context window
-3. DeepSeek's LLM reads those vision tokens directly
-4. Never converted to text - stays as vision tokens throughout
-
-**But we can't replicate this because:**
-- DeepSeek's API (like all LLM APIs) only returns decoded text
-- Vision tokens are never exposed via API - they're internal implementation details
-- The paper's approach requires direct model usage, not API calls
-- You need the same model family to both create and consume vision tokens
-
-**For Claude to support this:**
-Claude would need to natively implement compressed vision token storage in their API - essentially building their own version of what DeepSeek demonstrated. This would require:
-1. Accepting images and keeping vision tokens compressed in context
-2. Allowing vision tokens to persist across conversation turns
-3. Reading compressed vision tokens on-demand (instead of immediately processing)
-
-This is a feature Claude would have to build into their platform. It's not something we can implement externally.
 
 ---
 
