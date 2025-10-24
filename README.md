@@ -13,20 +13,16 @@ Clone the house-code repo, set up a Python virtual environment, install dependen
 and give me the next steps so I can try it out.
 ```
 
-## Problems We're Solving
+## Highlights
 
-**1. Context pollution**
-Claude Code reads the same files multiple times, keeps old todo lists, accumulates errors. After 50 turns your context is full of garbage. It doesn't clean up after itself.
+**1. Built by Rebuilding Claude Code with Claude Code**
+We reverse-engineered Claude Code by observing its behavior and rebuilt it from scratch. See [internal-rebuild-notes/SUMMARY.md](internal-rebuild-notes/SUMMARY.md) for the full story.
 
-**2. Token limits kill long sessions**
-Hit 150k tokens and Claude Code just dies. You lose all your early context or the conversation becomes useless.
+**2. Daemon Cleaner Agent**
+Every 3 turns, Claude analyzes its own conversation history and prunes stale content. Superseded file reads, completed todos, old errors - gone. See `house_code/core.py:389`.
 
-## Innovation
-
-**Daemon Cleaner Agent**
-Every 3 turns, Claude analyzes its own conversation history and prunes stale content. Superseded file reads, completed todos, old errors - gone. Uses Claude to clean Claude's context. Keeps conversations lean without manual intervention. See `house_code/core.py:389`.
-
-*Note: We explored visual memory compression via DeepSeek-OCR but found it unsuitable for code (59% accuracy, indentation stripping). Research archived in `docs/research/visual-memory-archive/`.*
+**3. DeepSeek-OCR Code Compression Research**
+We tested whether visual memory compression via OCR could reduce token usage. Result: Not viable for code (59% accuracy, indentation stripping). See [tests/DEEPSEEK_OCR_CODE_RESEARCH.md](tests/DEEPSEEK_OCR_CODE_RESEARCH.md).
 
 ## Setup
 
