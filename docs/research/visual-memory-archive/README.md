@@ -330,4 +330,15 @@ The rendering pipeline works beautifully and could be useful for other purposes.
 
 The daemon cleaner agent (3x compression, 100% accuracy, instant) is a better solution for House Code. All research materials are preserved here for future reference.
 
+### Theoretical: How This Could Work
+
+If you replaced Claude entirely with DeepSeek and ran everything locally on a machine with an A100:
+- DeepSeek inference runs on local A100
+- Vision tokens stay compressed in GPU VRAM
+- Tools execute locally (zero network latency)
+- Context lives in VRAM, never needs text conversion
+- 10x compression works as designed (97% accuracy)
+
+This would require a ~$2-10k GPU investment and abandoning the Claude-based architecture. Viable for someone building a local-first coding assistant with DeepSeek models.
+
 **Status:** Research complete. Approach abandoned due to architectural incompatibility. Artifacts archived.
