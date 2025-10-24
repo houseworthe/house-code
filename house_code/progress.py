@@ -97,31 +97,51 @@ class ProgressIndicator:
         return text
 
     @staticmethod
-    def print_tool_start(tool_name: str, params: Dict[str, Any]):
-        """Print tool execution start indicator."""
+    def print_tool_start(tool_name: str, params: Dict[str, Any], indent: bool = False):
+        """Print tool execution start indicator (overwrites previous line)."""
         params_str = ProgressIndicator.format_params(params)
         if params_str:
-            print(f"\n{ProgressIndicator.blue('⏺')} {tool_name}({params_str})")
+            status_line = f"{ProgressIndicator.blue('⏺')} {tool_name}({params_str})"
         else:
-            print(f"\n{ProgressIndicator.blue('⏺')} {tool_name}()")
-        print(f"{ProgressIndicator.gray('  ⎿')}  Executing...")
+            status_line = f"{ProgressIndicator.blue('⏺')} {tool_name}()"
+
+        # Add indentation for sub-agents
+        if indent:
+            status_line = f"  {status_line}"
+
+        # Clear line and print status (use \r to go to start of line)
+        # \033[K clears from cursor to end of line
+        print(f"\r\033[K{status_line}", end='', flush=True)
 
     @staticmethod
-    def print_tool_complete(elapsed_seconds: float, show_timing: bool = True):
-        """Print tool execution completion indicator."""
+    def print_tool_complete(elapsed_seconds: float, show_timing: bool = True, indent: bool = False):
+        """Print tool execution completion indicator (updates same line)."""
         if show_timing:
-            print(f"{ProgressIndicator.green('  ✓')} Complete ({elapsed_seconds:.1f}s)")
+            completion = f" {ProgressIndicator.green('✓')} ({elapsed_seconds:.1f}s)"
         else:
-            print(f"{ProgressIndicator.green('  ✓')} Complete")
+            completion = f" {ProgressIndicator.green('✓')}"
+        print(completion, end='', flush=True)
 
     @staticmethod
-    def print_tool_error(error_msg: str):
+    def print_tool_error(error_msg: str, indent: bool = False):
         """Print tool execution error indicator."""
-        print(f"{ProgressIndicator.red('  ✗')} Error: {error_msg}")
+        print(f" {ProgressIndicator.red('✗')} Error: {error_msg}", end='', flush=True)
+
+    @staticmethod
+    def print_subagent_header(agent_name: str):
+        """Print header when sub-agent starts executing."""
+        header = f"\n  {ProgressIndicator.gray(f'[{agent_name} Agent]')}"
+        print(header, flush=True)
+
+    @staticmethod
+    def print_summary(tool_count: int):
+        """Print summary after all tools complete."""
+        # Move to new line and show summary
+        summary = f"\r\033[K{ProgressIndicator.green('✓')} Used {tool_count} tool{'s' if tool_count != 1 else ''}"
+        print(f"\n{summary}\n", flush=True)
 
     @staticmethod
     def print_output_preview(output: str, max_lines: int = 5):
-        """Print a preview of the tool output."""
-        preview = ProgressIndicator.preview_output(output, max_lines)
-        if preview:
-            print(f"\n{preview}\n")
+        """Print a preview of the tool output (only for verbose mode)."""
+        # Don't show preview by default - keep it clean
+        pass

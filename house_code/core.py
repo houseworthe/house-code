@@ -66,6 +66,8 @@ class HouseCode:
         max_iterations: int = 50,
         enable_auto_cleaning: bool = True,
         cleaning_frequency: int = 3,
+        is_subagent: bool = False,
+        subagent_name: str = "",
     ):
         self.client = anthropic.Anthropic(api_key=api_key)
         self.model = model
@@ -81,6 +83,12 @@ class HouseCode:
         self.enable_auto_cleaning = enable_auto_cleaning
         self.cleaning_frequency = cleaning_frequency
         self.turn_count = 0
+
+        # Progress tracking
+        self.tools_used_this_turn = 0
+        self.is_subagent = is_subagent
+        self.subagent_name = subagent_name
+        self.subagent_header_printed = False
 
     def register_tool(self, tool_definition: Dict, executor: callable):
         """Register a tool with its definition and executor."""
@@ -162,6 +170,14 @@ This prevents context pollution and allows parallel deep research.
         self.context.add_message("user", user_message)
         self.turn_count += 1
 
+        # Reset tool counter for this turn
+        self.tools_used_this_turn = 0
+
+        # THE INNOVATION: Run cleaner agent with knowledge of new prompt
+        # Clean BEFORE processing so cleaner can see what the user is asking for
+        if self.enable_auto_cleaning and self.turn_count % self.cleaning_frequency == 0:
+            self._run_cleaner_agent()
+
         iteration = 0
         while iteration < self.max_iterations:
             iteration += 1
@@ -201,15 +217,15 @@ This prevents context pollution and allows parallel deep research.
 
             # If no tool calls, we're done - return the text response
             if not tool_calls:
+                # Show summary if tools were used
+                if self.tools_used_this_turn > 0:
+                    ProgressIndicator.print_summary(self.tools_used_this_turn)
+
                 # Extract text from response
                 text_response = ""
                 for block in response.content:
                     if block.type == "text":
                         text_response += block.text
-
-                # THE INNOVATION: Run cleaner agent before returning
-                if self.enable_auto_cleaning and self.turn_count % self.cleaning_frequency == 0:
-                    self._run_cleaner_agent()
 
                 return text_response
 
@@ -238,11 +254,19 @@ This prevents context pollution and allows parallel deep research.
         Shows progress indicators so users know what's happening.
         """
         if tool_name not in self.tool_executors:
-            ProgressIndicator.print_tool_error(f"Unknown tool '{tool_name}'")
+            ProgressIndicator.print_tool_error(f"Unknown tool '{tool_name}'", indent=self.is_subagent)
             return f"Error: Unknown tool '{tool_name}'"
 
+        # Print sub-agent header on first tool call
+        if self.is_subagent and not self.subagent_header_printed:
+            ProgressIndicator.print_subagent_header(self.subagent_name)
+            self.subagent_header_printed = True
+
+        # Increment tool counter
+        self.tools_used_this_turn += 1
+
         # Print start indicator
-        ProgressIndicator.print_tool_start(tool_name, tool_input)
+        ProgressIndicator.print_tool_start(tool_name, tool_input, indent=self.is_subagent)
 
         try:
             # Execute tool with timing
@@ -254,14 +278,13 @@ This prevents context pollution and allows parallel deep research.
             # Convert result to string
             result_str = str(result)
 
-            # Show output preview (only show timing for operations > 0.1s)
+            # Show completion (only show timing for operations > 0.1s)
             show_timing = elapsed > 0.1
-            ProgressIndicator.print_output_preview(result_str)
-            ProgressIndicator.print_tool_complete(elapsed, show_timing)
+            ProgressIndicator.print_tool_complete(elapsed, show_timing, indent=self.is_subagent)
 
             return result_str
         except Exception as e:
-            ProgressIndicator.print_tool_error(str(e))
+            ProgressIndicator.print_tool_error(str(e), indent=self.is_subagent)
             return f"Error executing {tool_name}: {e}"
 
     def needs_garbage_collection(self) -> bool:

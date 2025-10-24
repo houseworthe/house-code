@@ -212,6 +212,8 @@ def execute_task(
             model=parent_agent.model,
             working_directory=parent_agent.working_directory,
             max_iterations=25,  # Fewer iterations for sub-agents
+            is_subagent=True,
+            subagent_name=subagent_type,
         )
 
         # Register only allowed tools
