@@ -97,7 +97,65 @@ result = model.infer(
 
 ## Root Cause Analysis
 
-### 1. Indentation Stripping (Critical Failure)
+### The Fundamental Limitation: Architectural Incompatibility
+
+**The core issue is not fixable through prompt engineering or rendering improvements.**
+
+#### What We Actually Tested
+```
+Text → PNG → DeepSeek-OCR model.infer() → Plain Text String → Claude
+                                          ↑
+                                   LOSSY CONVERSION (59% accuracy)
+```
+
+**Key insight from code analysis** (`deepseek_ocr_test_1.ipynb` cell 10):
+```python
+result = model.infer(
+    tokenizer,
+    prompt="<image>\nFree OCR.",
+    image_file='/content/test_image.png',
+    ...
+)
+# result is a plain text STRING, not vision token embeddings
+```
+
+#### Why This Architecture Fails
+
+1. **Vision tokens are model-specific internal representations**
+   - Created by DeepSeek's vision encoder
+   - Only consumable by DeepSeek's LLM decoder
+   - Not accessible via API (no extraction or injection endpoints)
+   - Can't be transferred to Claude
+
+2. **The paper's approach only works within DeepSeek's ecosystem**
+   - Same model compresses and decompresses
+   - Vision tokens stay internal, never converted to text
+   - No accuracy loss from OCR conversion
+   - Claude can't consume DeepSeek's vision tokens
+
+3. **Our hybrid approach requires text conversion**
+   - DeepSeek must convert vision tokens → text
+   - Claude only accepts text input (or its own vision tokens)
+   - This conversion is where 59% accuracy comes from
+   - No way to "store vision tokens" and use them with Claude later
+
+#### Why 59% Accuracy Occurs
+
+**The model.infer() API returns decoded text, not compressed representations.** This means:
+- Vision tokens are created internally
+- LLM decoder generates text output
+- We measure accuracy on the text output
+- The compression benefit is lost when converting to text for Claude
+
+**This is fundamentally different from the paper's approach:**
+- Paper: Vision tokens stay compressed in context
+- Our test: Vision tokens → text (decompression happens immediately)
+
+### Secondary Issues: Observed Error Patterns
+
+These are **symptoms of the text conversion**, not the root cause:
+
+#### 1. Indentation Stripping
 The model systematically collapses all leading whitespace:
 
 **Input:**
@@ -114,9 +172,9 @@ if path.endswith('.txt'):
 return os.path.join(dirname, filename)
 ```
 
-**Impact:** Python code becomes syntactically invalid. This is a dealbreaker.
+**Impact:** Python code becomes syntactically invalid.
 
-### 2. Systematic Method Name Errors
+#### 2. Systematic Method Name Errors
 The model makes consistent camelCase hallucinations:
 
 | Input | OCR Output | Error Type |
@@ -125,16 +183,13 @@ The model makes consistent camelCase hallucinations:
 | `os.path.join` | `os.pth.join` | Token truncation |
 | `.txt` | `.text` | Extension expansion |
 
-### 3. Code Block Duplication
+#### 3. Code Block Duplication
 Similar code blocks are sometimes duplicated or merged:
 - Model hallucinates repeated patterns
 - Loses track of logical structure
 - Duplicates similar function calls
 
-### 4. Premature Truncation
-Initial tests stopped at ~50% of input text. This was fixed by using taller images (1024×2048 instead of 1024×1024), but accuracy issues remained.
-
-### 5. Training Bias
+#### 4. Training Bias
 DeepSeek-OCR was likely trained on:
 - Documents (contracts, forms, receipts)
 - Natural language text
@@ -144,6 +199,8 @@ It was **not** trained on:
 - Source code with semantic whitespace
 - Programming language syntax
 - Indentation-dependent languages (Python, YAML)
+
+**Note:** Even if these error patterns were fixed, the architectural limitation remains. Vision tokens cannot be transferred between models.
 
 ---
 
@@ -192,17 +249,61 @@ content = f.read()
 
 ## Research Findings
 
-### Why DeepSeek-OCR Failed on Code
+### Why DeepSeek-OCR's Approach Doesn't Work for Claude-Based Systems
 
-1. **Indentation stripping is fundamental:** The model systematically removes all leading whitespace, making Python code syntactically invalid. This is not a prompt engineering issue - it's how the model was trained.
+#### The Fundamental Architectural Limitation
 
-2. **Accuracy far below threshold:** 59% accuracy is unacceptable for any production use case. Even minor syntax errors break code execution.
+**Vision tokens cannot be transferred between different model families.**
 
-3. **Training bias toward documents:** DeepSeek-OCR was trained on forms, contracts, and receipts - not source code. It doesn't understand that whitespace is semantic in code.
+1. **Vision tokens are model-specific internal representations**
+   - DeepSeek's vision encoder creates embeddings only DeepSeek's LLM can interpret
+   - Claude cannot consume DeepSeek's vision tokens (and vice versa)
+   - No API exists to extract, store, or inject raw vision token embeddings
+   - The only output from DeepSeek-OCR is decoded plain text
 
-4. **Systematic errors:** Consistent camelCase hallucinations (`endswith` → `endsWith`), token truncations (`os.path.join` → `os.pth.join`), and extension modifications (`.txt` → `.text`) suggest the model's vocabulary is biased toward natural language.
+2. **The paper's 10x compression only works within DeepSeek's ecosystem**
+   - **Their approach:** Vision tokens stay compressed in DeepSeek's context window
+   - **Our requirement:** Convert DeepSeek output → text → send to Claude
+   - **The gap:** Text conversion is where 59% accuracy comes from
 
-5. **Compression ratio mismatch:** Achieved only 2.2x compression vs 10x claimed in the paper, likely because code has different characteristics than the documents used in the original evaluation.
+3. **Our architecture requires lossy conversion**
+   ```
+   DeepSeek Paper (works):
+   PNG → Vision Tokens (stay compressed) → DeepSeek LLM → Response
+
+   Our Test (fails):
+   PNG → Vision Tokens → TEXT (59% loss) → Claude → Response
+                         ↑
+                    FORCED CONVERSION
+   ```
+
+4. **No way to "defer" the conversion**
+   - We tested: Store PNG, decompress on-demand via DeepSeek API
+   - Problem: DeepSeek API returns text, not vision tokens
+   - Result: Still 59% accuracy, just delayed
+   - Vision tokens never leave DeepSeek's internal memory
+
+#### Why 59% Accuracy Occurs
+
+**Not primarily an OCR quality issue** - it's an architectural mismatch:
+- The paper achieves 97% at 10x compression **within DeepSeek's own models**
+- We achieve 59% because we're **forcing a cross-model conversion**
+- The model.infer() API immediately decodes vision tokens to text
+- This text must then be sent to Claude (which can't read DeepSeek's vision tokens)
+
+#### Secondary Issues: Code-Specific Errors
+
+These symptoms appear during the forced text conversion:
+
+1. **Training bias toward documents:** DeepSeek-OCR was trained on forms, contracts, and receipts - not source code. It doesn't understand that whitespace is semantic in code.
+
+2. **Indentation stripping:** The model systematically removes all leading whitespace, making Python code syntactically invalid.
+
+3. **Systematic errors:** Consistent camelCase hallucinations (`endswith` → `endsWith`), token truncations (`os.path.join` → `os.pth.join`), and extension modifications (`.txt` → `.text`) suggest the model's vocabulary is biased toward natural language.
+
+4. **Accuracy far below threshold:** 59% accuracy is unacceptable for production. Even minor syntax errors break code execution.
+
+**Critical insight:** Even if these error patterns were fixed (better prompts, fine-tuning on code), the architectural limitation remains. You cannot use DeepSeek's vision compression with Claude as the inference model.
 
 ---
 
@@ -312,10 +413,41 @@ All research materials archived in `docs/research/visual-memory-archive/`:
 
 ## Conclusion
 
-This research demonstrates that DeepSeek-OCR, despite achieving 10x compression on document OCR tasks, is not viable for code compression. The model achieves only 59% accuracy on Python code and systematically strips indentation, making output syntactically invalid.
+This research demonstrates that **DeepSeek-OCR's vision compression approach is fundamentally incompatible with Claude-based coding assistants** due to architectural limitations, not merely code-specific accuracy issues.
 
-The fundamental issue is training bias: DeepSeek-OCR was trained on documents (forms, contracts, receipts) where whitespace is formatting, not semantics. For indentation-dependent languages like Python, this makes the model unsuitable regardless of prompt engineering.
+### The Fundamental Problem: Cross-Model Vision Token Transfer
 
-**Key Takeaway:** OCR models trained on documents cannot reliably handle source code without indentation-aware training objectives. Future work should explore vision-language models (which understand semantic structure) or code-specific OCR training.
+DeepSeek-OCR achieves 10x compression **within its own model ecosystem** by keeping vision tokens compressed in context. However:
 
-**Status:** Research complete. Visual compression via OCR not viable for code. Artifacts preserved for future reference.
+1. **Vision tokens cannot cross model boundaries** - DeepSeek's vision embeddings are only consumable by DeepSeek's LLM, not Claude
+2. **APIs only expose decoded text** - The model.infer() function returns plain text strings, not vision token embeddings
+3. **Forced conversion causes accuracy loss** - We achieve 59% accuracy because we must convert DeepSeek's vision tokens → text → Claude
+4. **No way to "defer" conversion** - Even storing PNGs and decompressing on-demand still hits 59% accuracy when calling DeepSeek's API
+
+### The Architectural Gap
+
+```
+What Works (DeepSeek Paper):
+PNG → Vision Tokens (stay compressed) → DeepSeek LLM → Response
+      ↑_____ 10x compression, 97% accuracy _____↑
+
+What We Need (Claude-Based System):
+PNG → Vision Tokens → TEXT → Claude → Response
+                      ↑
+              59% accuracy loss
+              (forced cross-model conversion)
+```
+
+### Secondary Issues
+
+Code-specific errors (indentation stripping, camelCase hallucinations, training bias) are **symptoms** of the forced text conversion, not the root cause. Even if these were fixed through fine-tuning on code, the architectural limitation remains: **you cannot use one model's vision compression with a different model's LLM.**
+
+### Key Takeaways
+
+1. **For Claude-based systems:** DeepSeek-OCR compression is not viable. Stick with context pruning (daemon cleaner agent).
+
+2. **For DeepSeek-based systems:** Vision compression works as advertised within their ecosystem.
+
+3. **For future research:** Vision compression only works when the same model handles both compression and inference. Cross-model vision token transfer is not currently possible via any API.
+
+**Status:** Research complete. Vision compression via DeepSeek-OCR not viable for Claude-based systems due to architectural incompatibility. Artifacts preserved for future reference.
