@@ -10,7 +10,7 @@ Want to check this out? Paste this into Claude Code:
 
 ```
 Clone the house-code repo, set up a Python virtual environment, install dependencies,
-and run `house` in interactive mode so I can see the banner and try it out.
+and give me the next steps so I can try it out.
 ```
 
 ## Problems We're Solving
