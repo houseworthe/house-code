@@ -44,6 +44,30 @@ from .highlighter import (
     SyntaxHighlighter,
 )
 
+from .config import (
+    VisualMemoryConfig,
+    load_config,
+    save_config,
+    get_default_config,
+    update_config,
+    reset_config,
+)
+
+from .mock import (
+    mock_compress,
+    mock_decompress,
+    estimate_compression_ratio,
+    validate_mock_tokens,
+)
+
+from .cache import (
+    VisualCache,
+)
+
+from .rosie_client import (
+    RosieClient,
+)
+
 
 __all__ = [
     # Models
@@ -64,6 +88,26 @@ __all__ = [
 
     # Highlighter
     'SyntaxHighlighter',
+
+    # Config (Phase 4)
+    'VisualMemoryConfig',
+    'load_config',
+    'save_config',
+    'get_default_config',
+    'update_config',
+    'reset_config',
+
+    # Mock (Phase 4)
+    'mock_compress',
+    'mock_decompress',
+    'estimate_compression_ratio',
+    'validate_mock_tokens',
+
+    # Cache (Phase 4)
+    'VisualCache',
+
+    # Client (Phase 4)
+    'RosieClient',
 ]
 
 __version__ = '0.1.0'
