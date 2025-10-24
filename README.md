@@ -22,7 +22,7 @@ We reverse-engineered Claude Code by observing its behavior and rebuilt it from 
 Every 3 turns, Claude analyzes its own conversation history and prunes stale content. Superseded file reads, completed todos, old errors - gone. See `house_code/core.py:389`.
 
 **3. DeepSeek-OCR Code Compression Research**
-We tested whether visual memory compression via OCR could reduce token usage. Result: Not viable for code (59% accuracy, indentation stripping). See [tests/DEEPSEEK_OCR_CODE_RESEARCH.md](tests/DEEPSEEK_OCR_CODE_RESEARCH.md).
+We tested whether visual memory compression via OCR could reduce token usage. Result: Not viable for code due to architectural limitations (vision tokens can't cross model boundaries). See [docs/research/visual-memory-archive](docs/research/visual-memory-archive).
 
 ## Setup
 
