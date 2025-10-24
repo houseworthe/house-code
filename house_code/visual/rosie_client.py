@@ -7,6 +7,10 @@ Toggles between mock mode (for testing) and real MCP server (for production).
 
 import base64
 import logging
+import json
+import subprocess
+import asyncio
+from pathlib import Path
 from typing import Optional
 
 from .models import VisualTokens
@@ -297,13 +301,40 @@ class RosieClient:
         Returns:
             True if configured, False otherwise
         """
-        # TODO: Implement actual check when MCP integration is ready
-        # For now, always return False (forces mock mode)
-        return False
+        try:
+            # Check if config file exists
+            config_path = Path.home() / ".house_code" / "config.json"
+            if not config_path.exists():
+                logger.debug("Config file not found")
+                return False
+
+            # Load config
+            import json
+            with open(config_path, 'r') as f:
+                config_data = json.load(f)
+
+            # Check if MCP server is defined
+            mcp_servers = config_data.get('mcpServers', {})
+            if self.config.mcp_server_name not in mcp_servers:
+                logger.debug(f"MCP server '{self.config.mcp_server_name}' not in config")
+                return False
+
+            # Verify server config has required fields
+            server_config = mcp_servers[self.config.mcp_server_name]
+            if not server_config.get('command') or not server_config.get('args'):
+                logger.debug("MCP server config missing command or args")
+                return False
+
+            logger.debug(f"MCP server '{self.config.mcp_server_name}' is configured")
+            return True
+
+        except Exception as e:
+            logger.debug(f"Error checking MCP configuration: {e}")
+            return False
 
     def _call_mcp_tool(self, tool: str, arguments: dict) -> dict:
         """
-        Call MCP tool on Rosie server.
+        Call MCP tool via SSH stdio transport.
 
         Args:
             tool: Tool name (e.g., "compress_visual_tokens")
@@ -315,13 +346,85 @@ class RosieClient:
         Raises:
             RuntimeError: If call fails
         """
-        # TODO: Implement actual MCP call when integration is ready
-        # This is a stub for Phase 1-2 implementation
-
         logger.debug(f"MCP call: {self.config.mcp_server_name}.{tool}")
 
-        raise NotImplementedError(
-            "Real MCP calls not yet implemented. "
-            "Waiting for Phase 1-2 (Rosie setup + MCP server). "
-            "Use mock mode for now."
-        )
+        try:
+            # Load MCP server config
+            config_path = Path.home() / ".house_code" / "config.json"
+            with open(config_path, 'r') as f:
+                config_data = json.load(f)
+
+            server_config = config_data['mcpServers'][self.config.mcp_server_name]
+            command = server_config['command']
+            args = server_config['args']
+
+            # Build MCP request
+            request = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "tools/call",
+                "params": {
+                    "name": tool,
+                    "arguments": arguments
+                }
+            }
+
+            # Execute MCP call with retry logic
+            for attempt in range(self.config.mcp_max_retries):
+                try:
+                    # Call server via SSH stdio
+                    process = subprocess.Popen(
+                        [command] + args,
+                        stdin=subprocess.PIPE,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.PIPE,
+                        text=True
+                    )
+
+                    # Send request and get response
+                    stdout, stderr = process.communicate(
+                        input=json.dumps(request) + "\n",
+                        timeout=self.config.mcp_timeout_seconds
+                    )
+
+                    # Parse response
+                    if process.returncode != 0:
+                        raise RuntimeError(
+                            f"MCP server process failed (exit {process.returncode}): {stderr}"
+                        )
+
+                    # Parse JSON-RPC response
+                    response = json.loads(stdout)
+
+                    if "error" in response:
+                        raise RuntimeError(
+                            f"MCP tool error: {response['error'].get('message', 'Unknown error')}"
+                        )
+
+                    if "result" not in response:
+                        raise RuntimeError("MCP response missing 'result' field")
+
+                    logger.debug(f"MCP call successful on attempt {attempt + 1}")
+                    return response["result"]
+
+                except subprocess.TimeoutExpired:
+                    logger.warning(
+                        f"MCP call timeout on attempt {attempt + 1}/{self.config.mcp_max_retries}"
+                    )
+                    if attempt == self.config.mcp_max_retries - 1:
+                        raise RuntimeError(
+                            f"MCP call timed out after {self.config.mcp_max_retries} attempts"
+                        )
+
+                except Exception as e:
+                    logger.warning(
+                        f"MCP call failed on attempt {attempt + 1}/{self.config.mcp_max_retries}: {e}"
+                    )
+                    if attempt == self.config.mcp_max_retries - 1:
+                        raise
+
+            raise RuntimeError("MCP call failed after all retry attempts")
+
+        except Exception as e:
+            logger.error(f"MCP call failed: {e}", exc_info=True)
+            raise RuntimeError(f"MCP call to {self.config.mcp_server_name}.{tool} failed: {e}")

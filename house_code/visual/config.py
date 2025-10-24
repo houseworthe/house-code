@@ -25,6 +25,13 @@ class VisualMemoryConfig:
         compression_target_ratio: Target compression ratio (for estimation)
         mock_latency_ms: Simulated latency for mock compression (ms)
         mcp_server_name: Name of MCP server in config (for real mode)
+        enable_auto_compression: Enable automatic compression during GC
+        compression_age_threshold: Minimum turns old before compression
+        mcp_timeout_seconds: Timeout for MCP calls in seconds
+        mcp_max_retries: Maximum number of retry attempts for failed MCP calls
+        runpod_ssh_host: SSH host for RunPod (optional, from MCP config)
+        runpod_ssh_port: SSH port for RunPod (optional, from MCP config)
+        runpod_ssh_key_path: Path to SSH private key (optional, from MCP config)
     """
     use_mock: bool = True
     cache_max_entries: int = 50
@@ -32,7 +39,14 @@ class VisualMemoryConfig:
     cache_path: str = "~/.house_code/visual_cache.json"
     compression_target_ratio: float = 8.0
     mock_latency_ms: int = 100
-    mcp_server_name: str = "deepseek-ocr-rosie"
+    mcp_server_name: str = "deepseek-ocr-runpod"
+    enable_auto_compression: bool = True
+    compression_age_threshold: int = 10
+    mcp_timeout_seconds: int = 10
+    mcp_max_retries: int = 3
+    runpod_ssh_host: Optional[str] = None
+    runpod_ssh_port: Optional[int] = None
+    runpod_ssh_key_path: Optional[str] = None
 
     def __post_init__(self):
         """Expand paths after initialization."""
