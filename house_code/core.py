@@ -7,11 +7,14 @@ User Request → Think/Plan → Gather Context → Execute → Verify → Respon
 
 import json
 import time
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 from dataclasses import dataclass, field
 
 import anthropic
 from .progress import ProgressIndicator
+
+if TYPE_CHECKING:
+    from .visual import VisualCache
 
 
 @dataclass
@@ -28,6 +31,7 @@ class ConversationContext:
     file_cache: Dict[str, str] = field(default_factory=dict)
     current_todos: List[Dict] = field(default_factory=list)
     critical_state: Dict[str, Any] = field(default_factory=dict)
+    visual_cache: Optional['VisualCache'] = None  # Phase 5: Visual memory cache
 
     def add_message(self, role: str, content: Any):
         """Add a message to the conversation history."""
@@ -89,6 +93,16 @@ class HouseCode:
         self.is_subagent = is_subagent
         self.subagent_name = subagent_name
         self.subagent_header_printed = False
+
+        # Phase 5: Initialize visual memory
+        from .visual import VisualCache, RosieClient, load_config
+        config = load_config()
+        self.context.visual_cache = VisualCache(
+            max_entries=config.cache_max_entries,
+            max_size_mb=config.cache_max_size_mb,
+            cache_path=config.cache_path,
+        )
+        self.rosie_client = RosieClient(config)
 
     def register_tool(self, tool_definition: Dict, executor: callable):
         """Register a tool with its definition and executor."""

@@ -12,6 +12,14 @@ from .grep import create_grep_tool_definition, execute_grep
 from .glob import create_glob_tool_definition, execute_glob
 from .todowrite import create_todowrite_tool_definition, execute_todowrite
 from ..subagents import create_task_tool_definition, execute_task
+from .visual_memory import (
+    create_compress_tool_definition,
+    execute_compress,
+    create_decompress_tool_definition,
+    execute_decompress,
+    create_stats_tool_definition,
+    execute_stats,
+)
 
 
 def register_all_tools(agent):
@@ -67,4 +75,21 @@ def register_all_tools(agent):
     agent.register_tool(
         create_task_tool_definition(),
         lambda subagent_type, prompt: execute_task(subagent_type, prompt, agent),
+    )
+
+    # Phase 5: Visual memory tools
+    # Special handling: need agent reference for cache access
+    agent.register_tool(
+        create_compress_tool_definition(),
+        lambda text, message_ids: execute_compress(text, message_ids, agent),
+    )
+
+    agent.register_tool(
+        create_decompress_tool_definition(),
+        lambda message_ids: execute_decompress(message_ids, agent),
+    )
+
+    agent.register_tool(
+        create_stats_tool_definition(),
+        lambda: execute_stats(agent),
     )
