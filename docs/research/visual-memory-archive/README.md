@@ -153,7 +153,29 @@ These errors appear during the forced text conversion but aren't the root cause:
 4. **Extension changes:** `.txt` → `.text`
 5. **Training bias:** Model trained on documents, not code
 
-**Critical point:** Even if we fixed all these error patterns, the architectural limitation remains. You cannot use one model's vision compression with a different model's LLM.
+**Critical point:** Even if we fixed all these error patterns, the architectural limitation remains. You cannot use one model's vision compression with a different model's LLM. (And switching to DeepSeek's LLM wouldn't help - their API also only returns decoded text, not vision tokens. The paper's compression only works in non-API usage where vision tokens stay in memory.)
+
+### Why Can't We Just Use DeepSeek's Models?
+
+**DeepSeek's 97% compression works because:**
+1. Vision encoder creates vision tokens (internal)
+2. Vision tokens stay compressed in DeepSeek's context window
+3. DeepSeek's LLM reads those vision tokens directly
+4. Never converted to text - stays as vision tokens throughout
+
+**But we can't replicate this because:**
+- DeepSeek's API (like all LLM APIs) only returns decoded text
+- Vision tokens are never exposed via API - they're internal implementation details
+- The paper's approach requires direct model usage, not API calls
+- You need the same model family to both create and consume vision tokens
+
+**For Claude to support this:**
+Claude would need to natively implement compressed vision token storage in their API - essentially building their own version of what DeepSeek demonstrated. This would require:
+1. Accepting images and keeping vision tokens compressed in context
+2. Allowing vision tokens to persist across conversation turns
+3. Reading compressed vision tokens on-demand (instead of immediately processing)
+
+This is a feature Claude would have to build into their platform. It's not something we can implement externally.
 
 ---
 
