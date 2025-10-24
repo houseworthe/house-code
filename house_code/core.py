@@ -426,9 +426,10 @@ Be aggressive but safe. Prioritize keeping context lean."""
         context_analysis = self._build_context_analysis()
 
         # Call Claude as cleaner agent (separate API call, doesn't pollute context)
+        # Use Haiku 4.5 - fast and cheap for janitor work
         try:
             response = self.client.messages.create(
-                model=self.model,
+                model="claude-haiku-4-5-20251001",
                 max_tokens=2000,
                 system=self._build_cleaner_system_prompt(),
                 messages=[{

@@ -22,7 +22,7 @@ from .banner import show_banner
 )
 @click.option(
     "--model",
-    default="claude-sonnet-4-20250514",
+    default="claude-sonnet-4-5-20250929",
     help="Claude model to use",
 )
 @click.option(
